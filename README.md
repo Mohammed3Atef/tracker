@@ -255,15 +255,6 @@ See `prisma/schema.prisma` for complete schema definition.
 - Search by name or email
 - Live status indicators (clocked in/on break/out)
 
-## Documentation
-
-Additional documentation files:
-
-- `PRISMA_SETUP.md` - Database setup and migration guide
-- `NEXTAUTH_SETUP.md` - Authentication setup guide
-- `API_FOUNDATION_SETUP.md` - API foundation layer documentation
-- `LEAVE_MANAGEMENT_SETUP.md` - Leave management feature guide
-- `DEBUG_LOGGING.md` - Debug logging configuration
 
 ## Development
 
