@@ -88,7 +88,7 @@ export default function AppDashboard() {
               <>
                 <div className="text-2xl font-bold">
                   {timeStatus?.hasActiveSession ? (
-                    timeStatus.hasActiveBreak ? (
+                    timeStatus.activeBreak ? (
                       <Badge variant="default">On Break</Badge>
                     ) : (
                       <Badge variant="default">Clocked In</Badge>
@@ -265,7 +265,7 @@ export default function AppDashboard() {
                     <span className="text-muted-foreground">Status:</span>
                     <span>
                       {timeStatus?.hasActiveSession ? (
-                        timeStatus.hasActiveBreak ? (
+                        timeStatus.activeBreak ? (
                           <Badge variant="default">On Break</Badge>
                         ) : (
                           <Badge variant="default">Clocked In</Badge>

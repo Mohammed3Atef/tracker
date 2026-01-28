@@ -12,7 +12,7 @@ const updateUserSchema = z.object({
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const user = await requireRoleApi("admin", "manager");
@@ -21,7 +21,7 @@ export async function GET(
       return user;
     }
 
-    const { id } = params;
+    const { id } = await params;
 
     const targetUser = await prisma.user.findUnique({
       where: { id },
@@ -49,7 +49,7 @@ export async function GET(
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const currentUser = await requireRoleApi("admin", "manager");
@@ -58,7 +58,7 @@ export async function PATCH(
       return currentUser;
     }
 
-    const { id } = params;
+    const { id } = await params;
     const body = await req.json();
     const validatedData = updateUserSchema.parse(body);
 

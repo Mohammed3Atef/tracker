@@ -8,7 +8,7 @@ import { calculateDuration } from "@/lib/time-helpers";
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const user = await requireRoleApi("admin", "manager");
@@ -17,7 +17,7 @@ export async function GET(
       return user;
     }
 
-    const { id } = params;
+    const { id } = await params;
 
     // Check if target user exists
     const targetUser = await prisma.user.findUnique({

@@ -759,7 +759,7 @@ function UserTimeStatusDialog({
               <p className="text-sm text-muted-foreground">Status</p>
               <p className="font-medium">
                 {status.hasActiveSession ? (
-                  status.hasActiveBreak ? (
+                  status.activeBreak ? (
                     <Badge variant="default">On Break</Badge>
                   ) : (
                     <Badge variant="default">Clocked In</Badge>
