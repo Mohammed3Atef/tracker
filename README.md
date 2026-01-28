@@ -337,6 +337,56 @@ NODE_ENV="production"
 
 [Add your license here]
 
+## PWA (Progressive Web App)
+
+The application is configured as a Progressive Web App (PWA) and can be installed on mobile devices.
+
+### Installation
+
+**Android (Chrome/Edge):**
+1. Open the app in Chrome or Edge browser
+2. Tap the menu (three dots)
+3. Select "Install app" or "Add to Home Screen"
+4. Confirm installation
+
+**iOS (Safari):**
+1. Open the app in Safari browser
+2. Tap the Share button
+3. Select "Add to Home Screen"
+4. Confirm addition
+
+### PWA Features
+
+- **Offline Support**: Cached pages work offline
+- **App-like Experience**: Opens in standalone mode (no browser UI)
+- **Fast Loading**: Service worker caches assets for faster loading
+- **Install Prompt**: Automatic install prompt on supported browsers
+
+### Icon Generation
+
+The app includes placeholder icons. To generate proper PWA icons:
+
+1. Use an online tool:
+   - [RealFaviconGenerator](https://realfavicongenerator.net/)
+   - [PWA Builder Image Generator](https://www.pwabuilder.com/imageGenerator)
+
+2. Required sizes:
+   - 72x72, 96x96, 128x128, 144x144, 152x152, 192x192, 384x384, 512x512 (PNG)
+   - Apple Touch Icon: 180x180 (PNG)
+
+3. Place generated icons in `public/icons/` directory
+
+4. Update `public/manifest.json` if icon paths change
+
+### Service Worker
+
+The service worker is automatically generated during build and handles:
+- Static asset caching
+- Offline page caching
+- Network-first strategy for API calls
+
+Service worker files are in `public/` directory (gitignored in `.next/`).
+
 ## Support
 
 For issues and questions, please open an issue on the repository.
