@@ -12,27 +12,15 @@ export async function GET(req: NextRequest) {
       return user;
     }
 
-    // Get all roles with permissions
-    const roles = await prisma.role.findMany({
-      include: {
-        permissions: {
-          include: {
-            permission: true,
-          },
-        },
-      },
-      orderBy: {
-        name: "asc",
-      },
+    // Get all permissions
+    const permissions = await prisma.permission.findMany({
+      orderBy: [
+        { resource: "asc" },
+        { action: "asc" },
+      ],
     });
 
-    // Transform to include permission details
-    const rolesWithPermissions = roles.map((role) => ({
-      ...role,
-      permissions: role.permissions.map((rp) => rp.permission),
-    }));
-
-    return ok(rolesWithPermissions);
+    return ok(permissions);
   } catch (error) {
     return handleApiError(error);
   }

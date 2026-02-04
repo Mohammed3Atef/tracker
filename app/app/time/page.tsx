@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useTimeStatus } from "@/hooks/use-time-status";
 import { useMyTime } from "@/hooks/use-my-time";
 import { useClockIn, useClockOut, useStartBreak, useEndBreak } from "@/hooks/use-time-actions";
@@ -17,8 +17,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Clock, Play, Pause, Square, Coffee, Loader2 } from "lucide-react";
+import { Clock, Play, Pause, Square, Coffee, Loader2, ChevronDown, ChevronUp } from "lucide-react";
 import { formatDuration, formatDurationWithSeconds, getWeekBounds, calculateDuration, calculateDurationInSeconds } from "@/lib/time-helpers";
+import { SessionDetails } from "@/components/time/session-details";
 
 export default function TimePage() {
   const { data: status, isLoading: statusLoading, error: statusError } = useTimeStatus();
@@ -168,6 +169,19 @@ export default function TimePage() {
   // Sort by date descending
   dailyTotals.sort((a, b) => b.date.getTime() - a.date.getTime());
 
+  // State for expanded days
+  const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set());
+  
+  const toggleDay = (date: string) => {
+    const newExpanded = new Set(expandedDays);
+    if (newExpanded.has(date)) {
+      newExpanded.delete(date);
+    } else {
+      newExpanded.add(date);
+    }
+    setExpandedDays(newExpanded);
+  };
+
   return (
     <div className="space-y-6 p-6">
       <div>
@@ -203,34 +217,45 @@ export default function TimePage() {
                     )}
                   </div>
                   
-                  {/* Live Timer for Current Session */}
+                  {/* Work Time - Always show when clocked in */}
                   {status?.hasActiveSession && (
                     <div className="space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                        Work Time
+                      </p>
                       <p className="text-3xl font-bold text-primary font-mono">
                         {formatDurationWithSeconds(currentSessionDurationSeconds)}
                       </p>
                       <p className="text-sm text-muted-foreground">
-                        Current session {status.activeBreak ? "(on break)" : ""}
+                        {status.activeBreak ? "Paused (on break)" : "Active"}
                       </p>
                     </div>
                   )}
                   
-                  {/* Break Timer - Show prominently when on break */}
+                  {/* Break Time - Show when on break */}
                   {status?.activeBreak && (
-                    <div className="space-y-1 pt-2 border-t">
+                    <div className="space-y-1 pt-3 border-t border-dashed">
+                      <p className="text-xs font-medium text-orange-600 uppercase tracking-wide">
+                        Break Time
+                      </p>
                       <p className="text-2xl font-bold text-orange-500 font-mono">
                         {formatDurationWithSeconds(activeBreakDurationSeconds)}
                       </p>
-                      <p className="text-sm text-muted-foreground">On break</p>
+                      <p className="text-sm text-muted-foreground">Currently on break</p>
                     </div>
                   )}
                   
-                  {/* Total Worked Today */}
-                  <div className="space-y-1 pt-2 border-t">
+                  {/* Total Worked Today - Clearly labeled as work time only */}
+                  <div className="space-y-1 pt-3 border-t">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                      Total Work Time Today
+                    </p>
                     <p className="text-2xl font-bold">
                       {formatDuration(status?.totalWorkedToday || 0)}
                     </p>
-                    <p className="text-sm text-muted-foreground">Total worked today</p>
+                    <p className="text-sm text-muted-foreground">
+                      Work time only (breaks excluded)
+                    </p>
                   </div>
                 </div>
               </div>
@@ -328,62 +353,122 @@ export default function TimePage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {dailyTotals.map((day) => (
-                      <TableRow key={day.date.toISOString()}>
-                        <TableCell>
-                          {day.date.toLocaleDateString("en-US", {
-                            weekday: "short",
-                            month: "short",
-                            day: "numeric",
-                          })}
-                        </TableCell>
-                        <TableCell className="font-medium">
-                          {formatDuration(day.totalMinutes)}
-                        </TableCell>
-                        <TableCell>{day.sessionCount}</TableCell>
-                        <TableCell>
-                          {day.hasIncomplete ? (
-                            <Badge variant="secondary">In Progress</Badge>
-                          ) : (
-                            <Badge variant="outline">Completed</Badge>
+                    {dailyTotals.map((day) => {
+                      const dayKey = day.date.toISOString();
+                      const daySessions = sessionsByDate[day.date.toDateString()] || [];
+                      const isExpanded = expandedDays.has(dayKey);
+                      
+                      return (
+                        <React.Fragment key={dayKey}>
+                          <TableRow 
+                            className="cursor-pointer hover:bg-muted/50"
+                            onClick={() => toggleDay(dayKey)}
+                          >
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                {isExpanded ? (
+                                  <ChevronUp className="h-4 w-4" />
+                                ) : (
+                                  <ChevronDown className="h-4 w-4" />
+                                )}
+                                {day.date.toLocaleDateString("en-US", {
+                                  weekday: "short",
+                                  month: "short",
+                                  day: "numeric",
+                                })}
+                              </div>
+                            </TableCell>
+                            <TableCell className="font-medium">
+                              {formatDuration(day.totalMinutes)}
+                            </TableCell>
+                            <TableCell>{day.sessionCount}</TableCell>
+                            <TableCell>
+                              {day.hasIncomplete ? (
+                                <Badge variant="secondary">In Progress</Badge>
+                              ) : (
+                                <Badge variant="outline">Completed</Badge>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                          {isExpanded && (
+                            <TableRow>
+                              <TableCell colSpan={4} className="p-4 bg-muted/30">
+                                <div className="space-y-4">
+                                  {daySessions.map((session) => (
+                                    <SessionDetails
+                                      key={session.id}
+                                      session={session}
+                                      showDate={false}
+                                    />
+                                  ))}
+                                </div>
+                              </TableCell>
+                            </TableRow>
                           )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                        </React.Fragment>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </div>
 
               {/* Mobile Card View */}
               <div className="md:hidden space-y-4">
-                {dailyTotals.map((day) => (
-                  <Card key={day.date.toISOString()}>
-                    <CardContent className="pt-6">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="font-medium">
-                          {day.date.toLocaleDateString("en-US", {
-                            weekday: "short",
-                            month: "short",
-                            day: "numeric",
-                          })}
-                        </span>
-                        {day.hasIncomplete ? (
-                          <Badge variant="secondary">In Progress</Badge>
-                        ) : (
-                          <Badge variant="outline">Completed</Badge>
+                {dailyTotals.map((day) => {
+                  const dayKey = day.date.toISOString();
+                  const daySessions = sessionsByDate[day.date.toDateString()] || [];
+                  const isExpanded = expandedDays.has(dayKey);
+                  
+                  return (
+                    <Card key={dayKey}>
+                      <CardContent className="pt-6">
+                        <div 
+                          className="flex items-center justify-between mb-2 cursor-pointer"
+                          onClick={() => toggleDay(dayKey)}
+                        >
+                          <div className="flex items-center gap-2">
+                            {isExpanded ? (
+                              <ChevronUp className="h-4 w-4" />
+                            ) : (
+                              <ChevronDown className="h-4 w-4" />
+                            )}
+                            <span className="font-medium">
+                              {day.date.toLocaleDateString("en-US", {
+                                weekday: "short",
+                                month: "short",
+                                day: "numeric",
+                              })}
+                            </span>
+                          </div>
+                          {day.hasIncomplete ? (
+                            <Badge variant="secondary">In Progress</Badge>
+                          ) : (
+                            <Badge variant="outline">Completed</Badge>
+                          )}
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-2xl font-bold">
+                            {formatDuration(day.totalMinutes)}
+                          </span>
+                          <span className="text-sm text-muted-foreground">
+                            {day.sessionCount} {day.sessionCount === 1 ? "session" : "sessions"}
+                          </span>
+                        </div>
+                        {isExpanded && (
+                          <div className="mt-4 pt-4 border-t space-y-4">
+                            {daySessions.map((session) => (
+                              <SessionDetails
+                                key={session.id}
+                                session={session}
+                                showDate={false}
+                              />
+                            ))}
+                          </div>
                         )}
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-2xl font-bold">
-                          {formatDuration(day.totalMinutes)}
-                        </span>
-                        <span className="text-sm text-muted-foreground">
-                          {day.sessionCount} {day.sessionCount === 1 ? "session" : "sessions"}
-                        </span>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+                      </CardContent>
+                    </Card>
+                  );
+                })}
               </div>
             </>
           )}

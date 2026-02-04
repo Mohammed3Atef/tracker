@@ -14,12 +14,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Bug, Activity, Users, Clock, Calendar, TrendingUp } from "lucide-react";
+import { Bug, Activity, Users, Clock, Calendar, TrendingUp, ArrowRight, Plus } from "lucide-react";
 import { useUsers } from "@/hooks/use-users";
 import { useAllUsersStatus } from "@/hooks/use-user-time-status";
 import { usePendingLeaves } from "@/hooks/use-pending-leaves";
 import { useApiToast } from "@/hooks/use-api-toast";
 import { formatDuration } from "@/lib/time-helpers";
+import { SummaryCard } from "@/components/dashboard/summary-card";
+import { TeamGrid } from "@/components/dashboard/team-grid";
 
 export default function AdminDashboard() {
   const { data: users, isLoading: usersLoading, error: usersError } = useUsers();
@@ -68,213 +70,87 @@ export default function AdminDashboard() {
 
       {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Users</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            {usersLoading ? (
-              <Skeleton className="h-8 w-16" />
-            ) : (
-              <>
-                <div className="text-2xl font-bold">{totalUsers}</div>
-                <p className="text-xs text-muted-foreground">Registered users</p>
-              </>
-            )}
-          </CardContent>
-        </Card>
+        <SummaryCard
+          title="Total Users"
+          value={totalUsers}
+          description="Registered users"
+          icon={Users}
+          isLoading={usersLoading}
+        />
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Sessions</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            {statusLoading ? (
-              <Skeleton className="h-8 w-16" />
-            ) : (
-              <>
-                <div className="text-2xl font-bold">{activeSessions}</div>
-                <p className="text-xs text-muted-foreground">Currently clocked in</p>
-              </>
-            )}
-          </CardContent>
-        </Card>
+        <SummaryCard
+          title="Active Sessions"
+          value={activeSessions}
+          description="Currently clocked in"
+          icon={Clock}
+          isLoading={statusLoading}
+        />
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pending Leaves</CardTitle>
-            <Calendar className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            {leavesLoading ? (
-              <Skeleton className="h-8 w-16" />
-            ) : (
-              <>
-                <div className="text-2xl font-bold">{pendingLeavesCount}</div>
-                <p className="text-xs text-muted-foreground">Awaiting approval</p>
-              </>
-            )}
-          </CardContent>
-        </Card>
+        <SummaryCard
+          title="Pending Leaves"
+          value={pendingLeavesCount}
+          description="Awaiting approval"
+          icon={Calendar}
+          isLoading={leavesLoading}
+        />
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Worked Today</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            {statusLoading ? (
-              <Skeleton className="h-8 w-16" />
-            ) : (
-              <>
-                <div className="text-2xl font-bold">{formatDuration(totalWorkedToday)}</div>
-                <p className="text-xs text-muted-foreground">All users combined</p>
-              </>
-            )}
-          </CardContent>
-        </Card>
+        <SummaryCard
+          title="Total Worked Today"
+          value={formatDuration(totalWorkedToday)}
+          description="All users combined"
+          icon={TrendingUp}
+          isLoading={statusLoading}
+        />
       </div>
 
-      {/* User Activity Table */}
+      {/* Team Overview */}
       <Card>
         <CardHeader>
-          <CardTitle>User Activity</CardTitle>
-          <CardDescription>Current status and activity for all users</CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Team Overview</CardTitle>
+              <CardDescription>Current status of all team members</CardDescription>
+            </div>
+            <Button asChild variant="ghost" size="sm">
+              <Link href="/admin/team">
+                View All
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           {usersLoading || statusLoading ? (
-            <div className="space-y-2">
-              <Skeleton className="h-12 w-full" />
-              <Skeleton className="h-12 w-full" />
-              <Skeleton className="h-12 w-full" />
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              <Skeleton className="h-32 w-full" />
+              <Skeleton className="h-32 w-full" />
+              <Skeleton className="h-32 w-full" />
             </div>
-          ) : !usersWithStatus || usersWithStatus.length === 0 ? (
+          ) : usersWithStatus && usersWithStatus.length > 0 ? (
+            <TeamGrid
+              members={usersWithStatus.map((user) => ({
+                id: user.id,
+                name: user.name,
+                email: user.email,
+                role: user.role.name,
+                status: user.status,
+              }))}
+              onViewDetails={(memberId) => {
+                // Navigate to user details or open dialog
+                window.location.href = `/admin/users#${memberId}`;
+              }}
+            />
+          ) : (
             <div className="text-center py-8 text-muted-foreground">
               <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
               <p>No users found</p>
             </div>
-          ) : (
-            <>
-              {/* Desktop Table View */}
-              <div className="hidden md:block overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Role</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Worked Today</TableHead>
-                      <TableHead className="text-right">Overtime</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {usersWithStatus.map((user) => {
-                      const hasOvertime = user.status && user.status.totalWorkedToday > 480; // 8 hours
-                      return (
-                        <TableRow key={user.id}>
-                          <TableCell className="font-medium">{user.name}</TableCell>
-                          <TableCell>{user.email}</TableCell>
-                          <TableCell>
-                            <Badge variant="secondary">{user.role.name}</Badge>
-                          </TableCell>
-                          <TableCell>
-                            {user.status ? (
-                              user.status.hasActiveSession ? (
-                                user.status.hasActiveBreak ? (
-                                  <Badge variant="default">On Break</Badge>
-                                ) : (
-                                  <Badge variant="default">Clocked In</Badge>
-                                )
-                              ) : (
-                                <Badge variant="secondary">Clocked Out</Badge>
-                              )
-                            ) : (
-                              <span className="text-muted-foreground">-</span>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {user.status ? formatDuration(user.status.totalWorkedToday) : "-"}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {hasOvertime ? (
-                              <Badge variant="destructive">
-                                {formatDuration(user.status!.totalWorkedToday - 480)}
-                              </Badge>
-                            ) : (
-                              <span className="text-muted-foreground">-</span>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
-
-              {/* Mobile Card View */}
-              <div className="md:hidden space-y-4">
-                {usersWithStatus.map((user) => {
-                  const hasOvertime = user.status && user.status.totalWorkedToday > 480;
-                  return (
-                    <Card key={user.id}>
-                      <CardContent className="pt-6">
-                        <div className="space-y-3">
-                          <div>
-                            <p className="font-medium">{user.name}</p>
-                            <p className="text-sm text-muted-foreground">{user.email}</p>
-                          </div>
-                          <div className="grid grid-cols-2 gap-4 text-sm">
-                            <div>
-                              <p className="text-muted-foreground">Role</p>
-                              <Badge variant="secondary">{user.role.name}</Badge>
-                            </div>
-                            <div>
-                              <p className="text-muted-foreground">Status</p>
-                              {user.status ? (
-                                user.status.hasActiveSession ? (
-                                  user.status.hasActiveBreak ? (
-                                    <Badge variant="default">On Break</Badge>
-                                  ) : (
-                                    <Badge variant="default">Clocked In</Badge>
-                                  )
-                                ) : (
-                                  <Badge variant="secondary">Clocked Out</Badge>
-                                )
-                              ) : (
-                                <span className="text-muted-foreground">-</span>
-                              )}
-                            </div>
-                            <div>
-                              <p className="text-muted-foreground">Worked Today</p>
-                              <p className="font-medium">
-                                {user.status ? formatDuration(user.status.totalWorkedToday) : "-"}
-                              </p>
-                            </div>
-                            {hasOvertime && (
-                              <div>
-                                <p className="text-muted-foreground">Overtime</p>
-                                <Badge variant="destructive">
-                                  {formatDuration(user.status!.totalWorkedToday - 480)}
-                                </Badge>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-              </div>
-            </>
           )}
         </CardContent>
       </Card>
 
       {/* Quick Actions */}
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader>
             <CardTitle>Quick Actions</CardTitle>
@@ -288,23 +164,56 @@ export default function AdminDashboard() {
               </Link>
             </Button>
             <Button asChild variant="outline" className="w-full justify-start">
+              <Link href="/admin/team">
+                <Activity className="mr-2 h-4 w-4" />
+                Team View
+              </Link>
+            </Button>
+            <Button asChild variant="outline" className="w-full justify-start">
+              <Link href="/admin/time/entries">
+                <Clock className="mr-2 h-4 w-4" />
+                Time Entries
+              </Link>
+            </Button>
+            <Button asChild variant="outline" className="w-full justify-start">
               <Link href="/admin/leaves">
                 <Calendar className="mr-2 h-4 w-4" />
                 Manage Leaves
               </Link>
             </Button>
             <Button asChild variant="outline" className="w-full justify-start">
-              <Link href="/admin/payroll">
+              <Link href="/admin/reports">
                 <TrendingUp className="mr-2 h-4 w-4" />
-                Payroll Preview
+                Reports
               </Link>
             </Button>
-            <Button asChild variant="outline" className="w-full justify-start">
-              <Link href="/app/debug">
-                <Bug className="mr-2 h-4 w-4" />
-                API Debug
-              </Link>
-            </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Today's Summary</CardTitle>
+            <CardDescription>Team activity overview</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3 text-sm">
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground">Active Employees:</span>
+                <span className="font-semibold text-lg">{activeSessions}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground">Total Hours:</span>
+                <span className="font-semibold text-lg">{formatDuration(totalWorkedToday)}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground">Total Users:</span>
+                <span className="font-semibold text-lg">{totalUsers}</span>
+              </div>
+              <div className="flex justify-between items-center pt-2 border-t">
+                <span className="text-muted-foreground">Pending Leaves:</span>
+                <Badge variant="default">{pendingLeavesCount}</Badge>
+              </div>
+            </div>
           </CardContent>
         </Card>
 

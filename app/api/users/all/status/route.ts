@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
-    // Get all active sessions
+    // Get all active sessions with ALL breaks (not just active ones)
     const activeSessions = await prisma.timeSession.findMany({
       where: {
         status: {
@@ -50,11 +50,7 @@ export async function GET(req: NextRequest) {
         },
       },
       include: {
-        breakSessions: {
-          where: {
-            endTime: null,
-          },
-        },
+        breakSessions: true, // Get all breaks, not just active ones
         user: {
           select: {
             id: true,

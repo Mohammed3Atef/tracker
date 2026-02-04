@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { useUsers, useUpdateUser, useUpdateUserProfile, useRoles, type User } from "@/hooks/use-users";
+import { useUsers, useUpdateUser, useUpdateUserProfile, useRoles, useCreateUser, type User, type CreateUserData } from "@/hooks/use-users";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAllUsersStatus } from "@/hooks/use-user-time-status";
 import { useUserTimeStatus } from "@/hooks/use-user-time-status";
 import { useApiToast } from "@/hooks/use-api-toast";
@@ -27,8 +28,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Edit, Clock, Users as UsersIcon, Search } from "lucide-react";
+import { Edit, Clock, Users as UsersIcon, Search, Plus, Calendar } from "lucide-react";
 import { formatDuration } from "@/lib/time-helpers";
+import { SessionDetails } from "@/components/time/session-details";
+import { SessionTimeline } from "@/components/time/session-timeline";
 import { useSession } from "next-auth/react";
 
 export default function UsersPage() {
@@ -39,9 +42,11 @@ export default function UsersPage() {
   const { toastApiError } = useApiToast();
   const updateUser = useUpdateUser();
   const updateProfile = useUpdateUserProfile();
+  const createUser = useCreateUser();
 
   const [editUserDialogOpen, setEditUserDialogOpen] = useState(false);
   const [editProfileDialogOpen, setEditProfileDialogOpen] = useState(false);
+  const [createUserDialogOpen, setCreateUserDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [viewStatusUserId, setViewStatusUserId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -67,6 +72,30 @@ export default function UsersPage() {
     department: "",
     position: "",
     salary: "",
+  });
+
+  // Form state for user creation
+  const [createUserFormData, setCreateUserFormData] = useState({
+    email: "",
+    password: "",
+    confirmPassword: "",
+    roleId: "",
+    createProfile: false,
+    profile: {
+      firstName: "",
+      lastName: "",
+      employeeId: "",
+      phone: "",
+      address: "",
+      city: "",
+      state: "",
+      zipCode: "",
+      country: "",
+      hireDate: new Date().toISOString().split("T")[0],
+      department: "",
+      position: "",
+      salary: "",
+    },
   });
 
   // Get available roles
@@ -114,6 +143,13 @@ export default function UsersPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [updateProfile.error]);
+
+  useEffect(() => {
+    if (createUser.error) {
+      toastApiError(createUser.error as Error);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [createUser.error]);
 
   const openEditUserDialog = (user: User) => {
     setSelectedUser(user);
@@ -203,6 +239,93 @@ export default function UsersPage() {
     }
   };
 
+  const handleCreateUser = async () => {
+    // Validation
+    if (!createUserFormData.email || !createUserFormData.password || !createUserFormData.roleId) {
+      toastApiError(new Error("Email, password, and role are required"));
+      return;
+    }
+
+    if (createUserFormData.password !== createUserFormData.confirmPassword) {
+      toastApiError(new Error("Passwords do not match"));
+      return;
+    }
+
+    if (createUserFormData.password.length < 8) {
+      toastApiError(new Error("Password must be at least 8 characters long"));
+      return;
+    }
+
+    if (createUserFormData.createProfile) {
+      if (
+        !createUserFormData.profile.firstName ||
+        !createUserFormData.profile.lastName ||
+        !createUserFormData.profile.employeeId ||
+        !createUserFormData.profile.hireDate
+      ) {
+        toastApiError(
+          new Error("Profile requires firstName, lastName, employeeId, and hireDate")
+        );
+        return;
+      }
+    }
+
+    try {
+      const userData: CreateUserData = {
+        email: createUserFormData.email,
+        password: createUserFormData.password,
+        roleId: createUserFormData.roleId,
+        ...(createUserFormData.createProfile && {
+          profile: {
+            firstName: createUserFormData.profile.firstName,
+            lastName: createUserFormData.profile.lastName,
+            employeeId: createUserFormData.profile.employeeId,
+            phone: createUserFormData.profile.phone || undefined,
+            address: createUserFormData.profile.address || undefined,
+            city: createUserFormData.profile.city || undefined,
+            state: createUserFormData.profile.state || undefined,
+            zipCode: createUserFormData.profile.zipCode || undefined,
+            country: createUserFormData.profile.country || undefined,
+            hireDate: createUserFormData.profile.hireDate,
+            department: createUserFormData.profile.department || undefined,
+            position: createUserFormData.profile.position || undefined,
+            salary: createUserFormData.profile.salary
+              ? parseFloat(createUserFormData.profile.salary)
+              : undefined,
+          },
+        }),
+      };
+
+      await createUser.mutateAsync(userData);
+      setCreateUserDialogOpen(false);
+      // Reset form
+      setCreateUserFormData({
+        email: "",
+        password: "",
+        confirmPassword: "",
+        roleId: "",
+        createProfile: false,
+        profile: {
+          firstName: "",
+          lastName: "",
+          employeeId: "",
+          phone: "",
+          address: "",
+          city: "",
+          state: "",
+          zipCode: "",
+          country: "",
+          hireDate: new Date().toISOString().split("T")[0],
+          department: "",
+          position: "",
+          salary: "",
+        },
+      });
+    } catch (error) {
+      // Error handled by useEffect
+    }
+  };
+
   // Filter users
   const filteredUsers = React.useMemo(() => {
     if (!users) return [];
@@ -240,9 +363,17 @@ export default function UsersPage() {
 
   return (
     <div className="space-y-6 p-6">
-      <div>
-        <h1 className="text-3xl font-bold">Users Management</h1>
-        <p className="text-muted-foreground">Manage users, profiles, and view activity</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Users Management</h1>
+          <p className="text-muted-foreground">Manage users, profiles, and view activity</p>
+        </div>
+        {isAdmin && (
+          <Button onClick={() => setCreateUserDialogOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Create User
+          </Button>
+        )}
       </div>
 
       <Card>
@@ -726,8 +857,336 @@ export default function UsersPage() {
         <UserTimeStatusDialog
           userId={viewStatusUserId}
           onClose={() => setViewStatusUserId(null)}
+          allowEdit={isAdmin}
         />
       )}
+
+      {/* Create User Dialog */}
+      <Dialog open={createUserDialogOpen} onOpenChange={setCreateUserDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Create New User</DialogTitle>
+            <DialogDescription>
+              Create a new user account. You can optionally create a profile at the same time.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="create-email">Email *</Label>
+              <Input
+                id="create-email"
+                type="email"
+                value={createUserFormData.email}
+                onChange={(e) =>
+                  setCreateUserFormData({
+                    ...createUserFormData,
+                    email: e.target.value,
+                  })
+                }
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="create-password">Password *</Label>
+                <Input
+                  id="create-password"
+                  type="password"
+                  value={createUserFormData.password}
+                  onChange={(e) =>
+                    setCreateUserFormData({
+                      ...createUserFormData,
+                      password: e.target.value,
+                    })
+                  }
+                />
+              </div>
+              <div>
+                <Label htmlFor="create-confirm-password">Confirm Password *</Label>
+                <Input
+                  id="create-confirm-password"
+                  type="password"
+                  value={createUserFormData.confirmPassword}
+                  onChange={(e) =>
+                    setCreateUserFormData({
+                      ...createUserFormData,
+                      confirmPassword: e.target.value,
+                    })
+                  }
+                />
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="create-role">Role *</Label>
+              <select
+                id="create-role"
+                value={createUserFormData.roleId}
+                onChange={(e) =>
+                  setCreateUserFormData({
+                    ...createUserFormData,
+                    roleId: e.target.value,
+                  })
+                }
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
+                <option value="">Select a role</option>
+                {availableRoles.map((role) => (
+                  <option key={role.id} value={role.id}>
+                    {role.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-center space-x-2 pt-2">
+              <input
+                type="checkbox"
+                id="create-profile"
+                checked={createUserFormData.createProfile}
+                onChange={(e) =>
+                  setCreateUserFormData({
+                    ...createUserFormData,
+                    createProfile: e.target.checked,
+                  })
+                }
+                className="h-4 w-4 rounded border-gray-300"
+              />
+              <Label htmlFor="create-profile" className="cursor-pointer">
+                Create employee profile
+              </Label>
+            </div>
+            {createUserFormData.createProfile && (
+              <div className="space-y-4 pt-4 border-t">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="create-firstName">First Name *</Label>
+                    <Input
+                      id="create-firstName"
+                      value={createUserFormData.profile.firstName}
+                      onChange={(e) =>
+                        setCreateUserFormData({
+                          ...createUserFormData,
+                          profile: {
+                            ...createUserFormData.profile,
+                            firstName: e.target.value,
+                          },
+                        })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="create-lastName">Last Name *</Label>
+                    <Input
+                      id="create-lastName"
+                      value={createUserFormData.profile.lastName}
+                      onChange={(e) =>
+                        setCreateUserFormData({
+                          ...createUserFormData,
+                          profile: {
+                            ...createUserFormData.profile,
+                            lastName: e.target.value,
+                          },
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="create-employeeId">Employee ID *</Label>
+                    <Input
+                      id="create-employeeId"
+                      value={createUserFormData.profile.employeeId}
+                      onChange={(e) =>
+                        setCreateUserFormData({
+                          ...createUserFormData,
+                          profile: {
+                            ...createUserFormData.profile,
+                            employeeId: e.target.value,
+                          },
+                        })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="create-hireDate">Hire Date *</Label>
+                    <Input
+                      id="create-hireDate"
+                      type="date"
+                      value={createUserFormData.profile.hireDate}
+                      onChange={(e) =>
+                        setCreateUserFormData({
+                          ...createUserFormData,
+                          profile: {
+                            ...createUserFormData.profile,
+                            hireDate: e.target.value,
+                          },
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Label htmlFor="create-phone">Phone</Label>
+                  <Input
+                    id="create-phone"
+                    value={createUserFormData.profile.phone}
+                    onChange={(e) =>
+                      setCreateUserFormData({
+                        ...createUserFormData,
+                        profile: {
+                          ...createUserFormData.profile,
+                          phone: e.target.value,
+                        },
+                      })
+                    }
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="create-address">Address</Label>
+                  <Input
+                    id="create-address"
+                    value={createUserFormData.profile.address}
+                    onChange={(e) =>
+                      setCreateUserFormData({
+                        ...createUserFormData,
+                        profile: {
+                          ...createUserFormData.profile,
+                          address: e.target.value,
+                        },
+                      })
+                    }
+                  />
+                </div>
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <Label htmlFor="create-city">City</Label>
+                    <Input
+                      id="create-city"
+                      value={createUserFormData.profile.city}
+                      onChange={(e) =>
+                        setCreateUserFormData({
+                          ...createUserFormData,
+                          profile: {
+                            ...createUserFormData.profile,
+                            city: e.target.value,
+                          },
+                        })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="create-state">State</Label>
+                    <Input
+                      id="create-state"
+                      value={createUserFormData.profile.state}
+                      onChange={(e) =>
+                        setCreateUserFormData({
+                          ...createUserFormData,
+                          profile: {
+                            ...createUserFormData.profile,
+                            state: e.target.value,
+                          },
+                        })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="create-zipCode">Zip Code</Label>
+                    <Input
+                      id="create-zipCode"
+                      value={createUserFormData.profile.zipCode}
+                      onChange={(e) =>
+                        setCreateUserFormData({
+                          ...createUserFormData,
+                          profile: {
+                            ...createUserFormData.profile,
+                            zipCode: e.target.value,
+                          },
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Label htmlFor="create-country">Country</Label>
+                  <Input
+                    id="create-country"
+                    value={createUserFormData.profile.country}
+                    onChange={(e) =>
+                      setCreateUserFormData({
+                        ...createUserFormData,
+                        profile: {
+                          ...createUserFormData.profile,
+                          country: e.target.value,
+                        },
+                      })
+                    }
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="create-department">Department</Label>
+                    <Input
+                      id="create-department"
+                      value={createUserFormData.profile.department}
+                      onChange={(e) =>
+                        setCreateUserFormData({
+                          ...createUserFormData,
+                          profile: {
+                            ...createUserFormData.profile,
+                            department: e.target.value,
+                          },
+                        })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="create-position">Position</Label>
+                    <Input
+                      id="create-position"
+                      value={createUserFormData.profile.position}
+                      onChange={(e) =>
+                        setCreateUserFormData({
+                          ...createUserFormData,
+                          profile: {
+                            ...createUserFormData.profile,
+                            position: e.target.value,
+                          },
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Label htmlFor="create-salary">Salary</Label>
+                  <Input
+                    id="create-salary"
+                    type="number"
+                    step="0.01"
+                    value={createUserFormData.profile.salary}
+                    onChange={(e) =>
+                      setCreateUserFormData({
+                        ...createUserFormData,
+                        profile: {
+                          ...createUserFormData.profile,
+                          salary: e.target.value,
+                        },
+                      })
+                    }
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateUserDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreateUser} disabled={createUser.isPending}>
+              {createUser.isPending ? "Creating..." : "Create User"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -735,56 +1194,183 @@ export default function UsersPage() {
 function UserTimeStatusDialog({
   userId,
   onClose,
+  allowEdit = false,
 }: {
   userId: string;
   onClose: () => void;
+  allowEdit?: boolean;
 }) {
-  const { data: status, isLoading } = useUserTimeStatus(userId);
+  const { data: status, isLoading: statusLoading } = useUserTimeStatus(userId);
+  const [viewMode, setViewMode] = useState<"status" | "sessions" | "timeline">("status");
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
+  const queryClient = useQueryClient();
+
+  // Fetch user sessions
+  const { data: sessions, isLoading: sessionsLoading } = useQuery({
+    queryKey: ["user-time-sessions", userId, selectedDate],
+    queryFn: async () => {
+      const date = new Date(selectedDate);
+      const start = new Date(date);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(date);
+      end.setHours(23, 59, 59, 999);
+      
+      const response = await fetch(
+        `/api/users/${userId}/time-sessions?from=${start.toISOString()}&to=${end.toISOString()}`
+      );
+      if (!response.ok) throw new Error("Failed to fetch sessions");
+      return response.json().then((data) => data.data);
+    },
+    enabled: viewMode !== "status",
+  });
+
+  // Filter sessions for selected date
+  const daySessions = sessions?.filter((session: any) => {
+    const sessionDate = new Date(session.startTime).toISOString().split("T")[0];
+    return sessionDate === selectedDate;
+  }) || [];
 
   return (
     <Dialog open={!!userId} onOpenChange={onClose}>
-      <DialogContent>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Time Status</DialogTitle>
-          <DialogDescription>Current time tracking status for this user</DialogDescription>
+          <DialogTitle>User Time Tracking</DialogTitle>
+          <DialogDescription>View and manage time tracking for this user</DialogDescription>
         </DialogHeader>
-        {isLoading ? (
-          <div className="space-y-2">
-            <Skeleton className="h-4 w-full" />
-            <Skeleton className="h-4 w-full" />
+
+        {/* Tabs */}
+        <div className="flex gap-2 border-b">
+          <Button
+            variant={viewMode === "status" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setViewMode("status")}
+          >
+            <Clock className="h-4 w-4 mr-2" />
+            Status
+          </Button>
+          <Button
+            variant={viewMode === "sessions" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setViewMode("sessions")}
+          >
+            <Calendar className="h-4 w-4 mr-2" />
+            Sessions
+          </Button>
+          <Button
+            variant={viewMode === "timeline" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setViewMode("timeline")}
+          >
+            Timeline
+          </Button>
+        </div>
+
+        {/* Date selector for sessions/timeline */}
+        {(viewMode === "sessions" || viewMode === "timeline") && (
+          <div className="pt-4">
+            <Label htmlFor="session-date">Date</Label>
+            <Input
+              id="session-date"
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="w-full"
+            />
           </div>
-        ) : status ? (
+        )}
+
+        {/* Content */}
+        {viewMode === "status" && (
           <div className="space-y-4">
-            <div>
-              <p className="text-sm text-muted-foreground">Status</p>
-              <p className="font-medium">
-                {status.hasActiveSession ? (
-                  status.activeBreak ? (
-                    <Badge variant="default">On Break</Badge>
-                  ) : (
-                    <Badge variant="default">Clocked In</Badge>
-                  )
-                ) : (
-                  <Badge variant="secondary">Clocked Out</Badge>
+            {statusLoading ? (
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-full" />
+              </div>
+            ) : status ? (
+              <>
+                <div>
+                  <p className="text-sm text-muted-foreground">Status</p>
+                  <p className="font-medium">
+                    {status.hasActiveSession ? (
+                      status.activeBreak ? (
+                        <Badge variant="default">On Break</Badge>
+                      ) : (
+                        <Badge variant="default">Clocked In</Badge>
+                      )
+                    ) : (
+                      <Badge variant="secondary">Clocked Out</Badge>
+                    )}
+                  </p>
+                </div>
+                {status.session && (
+                  <div>
+                    <p className="text-sm text-muted-foreground">Session Started</p>
+                    <p className="font-medium">
+                      {new Date(status.session.startTime).toLocaleString()}
+                    </p>
+                  </div>
                 )}
+                <div>
+                  <p className="text-sm text-muted-foreground">Total Worked Today</p>
+                  <p className="font-medium text-lg">{formatDuration(status.totalWorkedToday)}</p>
+                </div>
+                {status.session && (
+                  <SessionDetails
+                    session={status.session as any}
+                    showDate={false}
+                    allowEdit={allowEdit}
+                    onUpdate={() => {
+                      queryClient.invalidateQueries({ queryKey: ["user-time-status", userId] });
+                    }}
+                  />
+                )}
+              </>
+            ) : (
+              <p className="text-muted-foreground">No status data available</p>
+            )}
+          </div>
+        )}
+
+        {viewMode === "sessions" && (
+          <div className="space-y-4">
+            {sessionsLoading ? (
+              <div className="space-y-2">
+                <Skeleton className="h-32 w-full" />
+                <Skeleton className="h-32 w-full" />
+              </div>
+            ) : daySessions.length === 0 ? (
+              <p className="text-center text-muted-foreground py-8">
+                No sessions found for this date
               </p>
-            </div>
-            {status.session && (
-              <div>
-                <p className="text-sm text-muted-foreground">Session Started</p>
-                <p className="font-medium">
-                  {new Date(status.session.startTime).toLocaleString()}
-                </p>
+            ) : (
+              <div className="space-y-4">
+                {daySessions.map((session: any) => (
+                  <SessionDetails
+                    key={session.id}
+                    session={session}
+                    showDate={false}
+                    allowEdit={allowEdit}
+                    onUpdate={() => {
+                      queryClient.invalidateQueries({ queryKey: ["user-time-sessions", userId] });
+                    }}
+                  />
+                ))}
               </div>
             )}
-            <div>
-              <p className="text-sm text-muted-foreground">Total Worked Today</p>
-              <p className="font-medium text-lg">{formatDuration(status.totalWorkedToday)}</p>
-            </div>
           </div>
-        ) : (
-          <p className="text-muted-foreground">No status data available</p>
         )}
+
+        {viewMode === "timeline" && (
+          <div>
+            {sessionsLoading ? (
+              <Skeleton className="h-64 w-full" />
+            ) : (
+              <SessionTimeline sessions={daySessions || []} date={new Date(selectedDate)} />
+            )}
+          </div>
+        )}
+
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
             Close

@@ -1,0 +1,116 @@
+"use client";
+
+import { useState } from "react";
+import { CalendarView, TimeEntry } from "@/components/time/calendar-view";
+import { useMyTime } from "@/hooks/use-my-time";
+import { Button } from "@/components/ui/button";
+import { Plus } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { TimeEntryForm } from "@/components/time/time-entry-form";
+import { useRouter } from "next/navigation";
+
+export default function TimeCalendarPage() {
+  const router = useRouter();
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [selectedEntry, setSelectedEntry] = useState<TimeEntry | null>(null);
+  const [addEntryDialogOpen, setAddEntryDialogOpen] = useState(false);
+  const [editEntryDialogOpen, setEditEntryDialogOpen] = useState(false);
+
+  // Get entries for current month
+  const currentDate = new Date();
+  const monthStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+  const monthEnd = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
+  monthEnd.setHours(23, 59, 59, 999);
+
+  const { data: entries, isLoading } = useMyTime(monthStart, monthEnd);
+
+  const handleDateClick = (date: Date) => {
+    setSelectedDate(date);
+    setAddEntryDialogOpen(true);
+  };
+
+  const handleEntryClick = (entry: TimeEntry) => {
+    setSelectedEntry(entry);
+    setEditEntryDialogOpen(true);
+  };
+
+  const handleAddSuccess = () => {
+    setAddEntryDialogOpen(false);
+    setSelectedDate(null);
+  };
+
+  const handleEditSuccess = () => {
+    setEditEntryDialogOpen(false);
+    setSelectedEntry(null);
+  };
+
+  return (
+    <div className="space-y-6 p-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Time Calendar</h1>
+          <p className="text-muted-foreground">View and manage your time entries in calendar format</p>
+        </div>
+        <Button onClick={() => setAddEntryDialogOpen(true)}>
+          <Plus className="h-4 w-4 mr-2" />
+          Add Time Entry
+        </Button>
+      </div>
+
+      {isLoading ? (
+        <div className="space-y-2">
+          <div className="h-96 bg-muted animate-pulse rounded-lg" />
+        </div>
+      ) : (
+        <CalendarView
+          entries={entries || []}
+          onDateClick={handleDateClick}
+          onEntryClick={handleEntryClick}
+          allowEdit={true}
+        />
+      )}
+
+      {/* Add Entry Dialog */}
+      <Dialog open={addEntryDialogOpen} onOpenChange={setAddEntryDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Time Entry</DialogTitle>
+            <DialogDescription>
+              {selectedDate
+                ? `Add time entry for ${selectedDate.toLocaleDateString()}`
+                : "Add a new time entry"}
+            </DialogDescription>
+          </DialogHeader>
+          <TimeEntryForm
+            defaultDate={selectedDate || new Date()}
+            onSuccess={handleAddSuccess}
+            onCancel={() => setAddEntryDialogOpen(false)}
+          />
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Entry Dialog */}
+      <Dialog open={editEntryDialogOpen} onOpenChange={setEditEntryDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Time Entry</DialogTitle>
+            <DialogDescription>Update time entry details</DialogDescription>
+          </DialogHeader>
+          {selectedEntry && (
+            <TimeEntryForm
+              entry={selectedEntry}
+              onSuccess={handleEditSuccess}
+              onCancel={() => setEditEntryDialogOpen(false)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

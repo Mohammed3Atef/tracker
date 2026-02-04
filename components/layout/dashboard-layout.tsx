@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import { Sidebar } from "./sidebar";
 import { Navbar } from "./navbar";
+import { QuickActions, FloatingQuickActions } from "@/components/time/quick-actions";
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -14,11 +15,13 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="relative flex min-h-screen flex-col">
+      <QuickActions />
       <Sidebar />
       <div className="flex flex-1 flex-col md:pl-64">
         <Navbar />
         <main className="flex-1">{children}</main>
       </div>
+      <FloatingQuickActions />
     </div>
   );
 }

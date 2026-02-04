@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiGet, apiPatch } from "@/lib/api-client";
+import { apiGet, apiPatch, apiPost } from "@/lib/api-client";
 
 export interface UserProfile {
   id: string;
@@ -53,6 +53,27 @@ export interface UpdateProfileData {
   department?: string | null;
   position?: string | null;
   salary?: number | null;
+}
+
+export interface CreateUserData {
+  email: string;
+  password: string;
+  roleId: string;
+  profile?: {
+    firstName: string;
+    lastName: string;
+    employeeId: string;
+    phone?: string;
+    address?: string;
+    city?: string;
+    state?: string;
+    zipCode?: string;
+    country?: string;
+    hireDate: string; // ISO date string
+    department?: string;
+    position?: string;
+    salary?: number;
+  };
 }
 
 export function useUsers() {
@@ -108,5 +129,16 @@ export function useRoles() {
   return useQuery<UserRole[]>({
     queryKey: ["roles"],
     queryFn: () => apiGet<UserRole[]>("/api/roles"),
+  });
+}
+
+export function useCreateUser() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: CreateUserData) => apiPost<User>("/api/users", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+    },
   });
 }

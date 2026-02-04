@@ -55,24 +55,47 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Calculate total break duration
-    const totalBreakDuration = session.breakSessions.reduce((total, breakSession) => {
+    // Reload session with all breaks to get updated break durations
+    const updatedSessionWithBreaks = await prisma.timeSession.findUnique({
+      where: { id: session.id },
+      include: {
+        breakSessions: true,
+      },
+    });
+
+    if (!updatedSessionWithBreaks) {
+      return fail(
+        "NOT_FOUND",
+        "Session not found after updating break",
+        undefined,
+        404
+      );
+    }
+
+    // Calculate total break duration from all breaks (including just-ended one)
+    const totalBreakDuration = updatedSessionWithBreaks.breakSessions.reduce((total, breakSession) => {
       if (breakSession.duration !== null) {
         return total + breakSession.duration;
+      } else if (breakSession.endTime) {
+        // If break has endTime but no duration, calculate it
+        return total + calculateDuration(breakSession.startTime, breakSession.endTime);
       }
       return total;
     }, 0);
 
     // Calculate total session duration (excluding breaks)
-    const totalDuration = calculateDuration(session.startTime, now);
+    const totalDuration = calculateDuration(updatedSessionWithBreaks.startTime, now);
     const workDuration = totalDuration - totalBreakDuration;
+
+    // Ensure work duration is non-negative
+    const finalWorkDuration = Math.max(0, workDuration);
 
     // Update session to completed
     const updatedSession = await prisma.timeSession.update({
       where: { id: session.id },
       data: {
         endTime: now,
-        duration: workDuration,
+        duration: finalWorkDuration,
         status: TimeSessionStatus.COMPLETED,
       },
       include: {

@@ -18,6 +18,10 @@ export function useMyTime(from?: Date, to?: Date) {
       const url = `/api/time/my${params.toString() ? `?${params.toString()}` : ""}`;
       return apiGet<TimeSession[]>(url);
     },
-    enabled: true, // Always enabled, will use defaults if params not provided
+    enabled: true,
+    staleTime: 30000, // Consider data fresh for 30 seconds
+    refetchOnWindowFocus: false, // Don't refetch on window focus
+    refetchOnMount: false, // Don't refetch on component mount if data exists
+    refetchOnReconnect: true, // Only refetch on reconnect
   });
 }
