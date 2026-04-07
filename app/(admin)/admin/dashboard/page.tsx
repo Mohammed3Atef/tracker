@@ -2,238 +2,251 @@
 
 import { useEffect } from "react";
 import Link from "next/link";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useRouter } from "next/navigation";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Bug, Activity, Users, Clock, Calendar, TrendingUp, ArrowRight, Plus } from "lucide-react";
+  Users,
+  Clock,
+  Calendar,
+  TrendingUp,
+  ArrowRight,
+  AlertCircle,
+  CheckCircle2,
+  Coffee,
+  UserX,
+} from "lucide-react";
 import { useUsers } from "@/hooks/use-users";
 import { useAllUsersStatus } from "@/hooks/use-user-time-status";
 import { usePendingLeaves } from "@/hooks/use-pending-leaves";
 import { useApiToast } from "@/hooks/use-api-toast";
 import { formatDuration } from "@/lib/time-helpers";
-import { SummaryCard } from "@/components/dashboard/summary-card";
-import { TeamGrid } from "@/components/dashboard/team-grid";
 
 export default function AdminDashboard() {
+  const router = useRouter();
   const { data: users, isLoading: usersLoading, error: usersError } = useUsers();
   const { data: usersStatus, isLoading: statusLoading } = useAllUsersStatus();
   const { data: pendingLeaves, isLoading: leavesLoading } = usePendingLeaves();
   const { toastApiError } = useApiToast();
 
   useEffect(() => {
-    if (usersError) {
-      toastApiError(usersError as Error);
-    }
+    if (usersError) toastApiError(usersError as Error);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [usersError]);
 
-  // Calculate stats
   const totalUsers = users?.length || 0;
-  const activeSessions = usersStatus?.filter((s) => s.hasActiveSession).length || 0;
-  const pendingLeavesCount = pendingLeaves?.length || 0;
+  const activeSessions = usersStatus?.filter((s) => s.hasActiveSession && !s.hasActiveBreak).length || 0;
+  const onBreak = usersStatus?.filter((s) => s.hasActiveBreak).length || 0;
   const totalWorkedToday = usersStatus?.reduce((sum, s) => sum + s.totalWorkedToday, 0) || 0;
+  const pendingLeavesCount = pendingLeaves?.length || 0;
 
-  // Create user status map
-  const statusMap = new Map();
-  usersStatus?.forEach((status) => {
-    statusMap.set(status.userId, status);
-  });
-
-  // Get users with status
-  const usersWithStatus = users?.map((user) => {
+  // Merge users with status
+  const statusMap = new Map(usersStatus?.map((s) => [s.userId, s]) ?? []);
+  const usersWithStatus = (users ?? []).map((user) => {
     const status = statusMap.get(user.id);
     const name = user.profile
       ? `${user.profile.firstName} ${user.profile.lastName}`
       : user.email;
-    return {
-      ...user,
-      name,
-      status,
-    };
-  }) || [];
+    return { ...user, name, status };
+  });
+
+  // Sort: active first, then on break, then clocked out
+  const sortedUsers = [...usersWithStatus].sort((a, b) => {
+    const scoreA = a.status?.hasActiveSession && !a.status?.hasActiveBreak ? 2 : a.status?.hasActiveBreak ? 1 : 0;
+    const scoreB = b.status?.hasActiveSession && !b.status?.hasActiveBreak ? 2 : b.status?.hasActiveBreak ? 1 : 0;
+    return scoreB - scoreA;
+  });
 
   return (
-    <div className="space-y-6 ">
+    <div className="p-6 space-y-6 max-w-6xl">
+      {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold">Admin Dashboard</h1>
-        <p className="text-muted-foreground">Overview of system activity and user status</p>
+        <h1 className="text-2xl font-bold tracking-tight">Admin Overview</h1>
+        <p className="text-sm text-muted-foreground mt-0.5">
+          {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+        </p>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <SummaryCard
-          title="Total Users"
-          value={totalUsers}
-          description="Registered users"
-          icon={Users}
-          isLoading={usersLoading}
-        />
+      {/* Pending leaves alert */}
+      {!leavesLoading && pendingLeavesCount > 0 && (
+        <div className="flex items-center gap-3 p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg">
+          <AlertCircle className="h-5 w-5 text-amber-600 flex-shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
+              {pendingLeavesCount} leave {pendingLeavesCount === 1 ? "request" : "requests"} awaiting approval
+            </p>
+          </div>
+          <Button asChild size="sm" variant="outline" className="border-amber-300 text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40">
+            <Link href="/admin/leaves">Review</Link>
+          </Button>
+        </div>
+      )}
 
-        <SummaryCard
-          title="Active Sessions"
-          value={activeSessions}
-          description="Currently clocked in"
-          icon={Clock}
-          isLoading={statusLoading}
-        />
-
-        <SummaryCard
-          title="Pending Leaves"
-          value={pendingLeavesCount}
-          description="Awaiting approval"
-          icon={Calendar}
-          isLoading={leavesLoading}
-        />
-
-        <SummaryCard
-          title="Total Worked Today"
-          value={formatDuration(totalWorkedToday)}
-          description="All users combined"
-          icon={TrendingUp}
-          isLoading={statusLoading}
-        />
-      </div>
-
-      {/* Team Overview */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Team Overview</CardTitle>
-              <CardDescription>Current status of all team members</CardDescription>
+      {/* Stats row */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Total Staff</CardTitle>
+              <Users className="h-4 w-4 text-muted-foreground" />
             </div>
-            <Button asChild variant="ghost" size="sm">
+          </CardHeader>
+          <CardContent>
+            {usersLoading ? <Skeleton className="h-8 w-16" /> : (
+              <>
+                <p className="text-2xl font-bold">{totalUsers}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Registered users</p>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Active Now</CardTitle>
+              <CheckCircle2 className="h-4 w-4 text-green-500" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            {statusLoading ? <Skeleton className="h-8 w-16" /> : (
+              <>
+                <p className="text-2xl font-bold">{activeSessions}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {onBreak > 0 && `${onBreak} on break · `}clocked in
+                </p>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Hours Today</CardTitle>
+              <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            {statusLoading ? <Skeleton className="h-8 w-16" /> : (
+              <>
+                <p className="text-2xl font-bold">{formatDuration(totalWorkedToday)}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">All staff combined</p>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Pending Leaves</CardTitle>
+              <Calendar className="h-4 w-4 text-muted-foreground" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            {leavesLoading ? <Skeleton className="h-8 w-16" /> : (
+              <>
+                <p className="text-2xl font-bold">{pendingLeavesCount}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Awaiting review</p>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Team live status */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base font-semibold">Team Status</CardTitle>
+            <Button asChild variant="ghost" size="sm" className="h-7 text-xs">
               <Link href="/admin/team">
-                View All
-                <ArrowRight className="ml-2 h-4 w-4" />
+                View all <ArrowRight className="ml-1 h-3 w-3" />
               </Link>
             </Button>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="pt-0">
           {usersLoading || statusLoading ? (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              <Skeleton className="h-32 w-full" />
-              <Skeleton className="h-32 w-full" />
-              <Skeleton className="h-32 w-full" />
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {[1, 2, 3, 4, 5, 6].map((i) => (
+                <Skeleton key={i} className="h-16 w-full" />
+              ))}
             </div>
-          ) : usersWithStatus && usersWithStatus.length > 0 ? (
-            <TeamGrid
-              members={usersWithStatus.map((user) => ({
-                id: user.id,
-                name: user.name,
-                email: user.email,
-                role: user.role.name,
-                status: user.status,
-              }))}
-              onViewDetails={(memberId) => {
-                // Navigate to user details or open dialog
-                window.location.href = `/admin/users#${memberId}`;
-              }}
-            />
-          ) : (
+          ) : sortedUsers.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
-              <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>No users found</p>
+              <Users className="h-10 w-10 mx-auto mb-3 opacity-30" />
+              <p className="text-sm">No users found</p>
+            </div>
+          ) : (
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {sortedUsers.slice(0, 12).map((user) => {
+                const isActive = user.status?.hasActiveSession && !user.status?.hasActiveBreak;
+                const isOnBreak = user.status?.hasActiveBreak;
+                const isOut = !user.status?.hasActiveSession;
+
+                const dotColor = isActive
+                  ? "bg-green-500"
+                  : isOnBreak
+                  ? "bg-orange-400"
+                  : "bg-gray-300 dark:bg-gray-600";
+
+                const StatusIcon = isOnBreak ? Coffee : isOut ? UserX : CheckCircle2;
+
+                return (
+                  <button
+                    key={user.id}
+                    onClick={() => router.push(`/admin/users?highlight=${user.id}`)}
+                    className="flex items-center gap-3 p-3 rounded-lg border border-border hover:border-primary/40 hover:bg-accent transition-colors text-left w-full"
+                  >
+                    <div className="relative flex-shrink-0">
+                      <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center">
+                        <span className="text-sm font-semibold text-primary">
+                          {user.name.charAt(0).toUpperCase()}
+                        </span>
+                      </div>
+                      <span className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-card ${dotColor}`} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{user.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {isActive
+                          ? `Working · ${formatDuration(user.status?.totalWorkedToday || 0)}`
+                          : isOnBreak
+                          ? "On break"
+                          : "Clocked out"}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Quick Actions */}
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader>
-            <CardTitle>Quick Actions</CardTitle>
-            <CardDescription>Common admin tasks</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <Button asChild variant="outline" className="w-full justify-start">
-              <Link href="/admin/users">
-                <Users className="mr-2 h-4 w-4" />
-                Manage Users
-              </Link>
-            </Button>
-            <Button asChild variant="outline" className="w-full justify-start">
-              <Link href="/admin/team">
-                <Activity className="mr-2 h-4 w-4" />
-                Team View
-              </Link>
-            </Button>
-            <Button asChild variant="outline" className="w-full justify-start">
-              <Link href="/admin/time/entries">
-                <Clock className="mr-2 h-4 w-4" />
-                Time Entries
-              </Link>
-            </Button>
-            <Button asChild variant="outline" className="w-full justify-start">
-              <Link href="/admin/leaves">
-                <Calendar className="mr-2 h-4 w-4" />
-                Manage Leaves
-              </Link>
-            </Button>
-            <Button asChild variant="outline" className="w-full justify-start">
-              <Link href="/admin/reports">
-                <TrendingUp className="mr-2 h-4 w-4" />
-                Reports
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Today's Summary</CardTitle>
-            <CardDescription>Team activity overview</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3 text-sm">
-              <div className="flex justify-between items-center">
-                <span className="text-muted-foreground">Active Employees:</span>
-                <span className="font-semibold text-lg">{activeSessions}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-muted-foreground">Total Hours:</span>
-                <span className="font-semibold text-lg">{formatDuration(totalWorkedToday)}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-muted-foreground">Total Users:</span>
-                <span className="font-semibold text-lg">{totalUsers}</span>
-              </div>
-              <div className="flex justify-between items-center pt-2 border-t">
-                <span className="text-muted-foreground">Pending Leaves:</span>
-                <Badge variant="default">{pendingLeavesCount}</Badge>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>System Health</CardTitle>
-            <CardDescription>Monitor API health and system status</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground mb-4">
-              Check the health endpoint to verify API connectivity and response format.
-            </p>
-            <Button asChild variant="outline" className="w-full">
-              <Link href="/api/health" target="_blank">
-                <Activity className="mr-2 h-4 w-4" />
-                View Health Endpoint
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
+      {/* Quick actions */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {[
+          { label: "Manage Users", href: "/admin/users", icon: Users },
+          { label: "Time Entries", href: "/admin/time/entries", icon: Clock },
+          { label: "Leave Requests", href: "/admin/leaves", icon: Calendar },
+          { label: "Reports", href: "/admin/reports", icon: TrendingUp },
+        ].map(({ label, href, icon: Icon }) => (
+          <Link key={href} href={href} className="group">
+            <Card className="hover:border-primary/50 transition-colors cursor-pointer">
+              <CardContent className="flex items-center gap-3 p-4">
+                <div className="h-8 w-8 rounded-md bg-primary/10 flex items-center justify-center flex-shrink-0">
+                  <Icon className="h-4 w-4 text-primary" />
+                </div>
+                <span className="text-sm font-medium flex-1">{label}</span>
+                <ArrowRight className="h-3.5 w-3.5 text-muted-foreground group-hover:text-primary transition-colors" />
+              </CardContent>
+            </Card>
+          </Link>
+        ))}
       </div>
     </div>
   );

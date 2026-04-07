@@ -1,5 +1,6 @@
 "use client";
 
+import { notFound } from "next/navigation";
 import { useEffect } from "react";
 import { useHealth } from "@/hooks/use-health";
 import { useApiToast } from "@/hooks/use-api-toast";
@@ -11,6 +12,10 @@ import { RefreshCw, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 
 export default function DebugPage() {
+  if (process.env.NODE_ENV !== "development") {
+    notFound();
+  }
+
   const { data, isLoading, error, isError, refetch, isRefetching } = useHealth();
   const { toastApiError } = useApiToast();
   const queryClient = useQueryClient();

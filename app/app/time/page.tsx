@@ -1,14 +1,21 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useTimeStatus } from "@/hooks/use-time-status";
 import { useMyTime } from "@/hooks/use-my-time";
 import { useClockIn, useClockOut, useStartBreak, useEndBreak } from "@/hooks/use-time-actions";
-import { useApiToast } from "@/hooks/use-api-toast";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Table,
   TableBody,
@@ -17,169 +24,110 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Clock, Play, Pause, Square, Coffee, Loader2, ChevronDown, ChevronUp } from "lucide-react";
+import { Clock, Play, Pause, Square, Coffee, Loader2, ChevronDown, ChevronUp, AlertTriangle } from "lucide-react";
 import { formatDuration, formatDurationWithSeconds, getWeekBounds, calculateDuration, calculateDurationInSeconds } from "@/lib/time-helpers";
 import { SessionDetails } from "@/components/time/session-details";
 
 export default function TimePage() {
-  const { data: status, isLoading: statusLoading, error: statusError } = useTimeStatus();
-  const weekBounds = getWeekBounds(new Date());
-  const { data: sessions, isLoading: sessionsLoading } = useMyTime(weekBounds.start, weekBounds.end);
-  const { toastApiError } = useApiToast();
+  const { data: status, isLoading: statusLoading } = useTimeStatus();
 
+  // Memoized to prevent query key changes on every render
+  const weekBounds = useMemo(() => getWeekBounds(new Date()), []);
+  const { data: sessions, isLoading: sessionsLoading } = useMyTime(weekBounds.start, weekBounds.end);
+
+  // Mutations — errors are handled internally via useApiToast
   const clockIn = useClockIn();
   const clockOut = useClockOut();
   const startBreak = useStartBreak();
   const endBreak = useEndBreak();
 
-  // Handle errors
-  useEffect(() => {
-    if (statusError) {
-      toastApiError(statusError as Error);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusError]);
+  // Clock-out confirmation dialog when user is on an active break
+  const [showClockOutDialog, setShowClockOutDialog] = useState(false);
 
-  useEffect(() => {
-    if (clockIn.error) {
-      toastApiError(clockIn.error as Error);
+  const handleClockOutClick = () => {
+    if (status?.activeBreak) {
+      setShowClockOutDialog(true);
+    } else {
+      clockOut.mutate();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clockIn.error]);
-
-  useEffect(() => {
-    if (clockOut.error) {
-      toastApiError(clockOut.error as Error);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clockOut.error]);
-
-  useEffect(() => {
-    if (startBreak.error) {
-      toastApiError(startBreak.error as Error);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [startBreak.error]);
-
-  useEffect(() => {
-    if (endBreak.error) {
-      toastApiError(endBreak.error as Error);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [endBreak.error]);
-
-  const handleClockIn = () => {
-    clockIn.mutate();
   };
 
-  const handleClockOut = () => {
+  const confirmClockOut = () => {
+    setShowClockOutDialog(false);
     clockOut.mutate();
-  };
-
-  const handleStartBreak = () => {
-    startBreak.mutate();
-  };
-
-  const handleEndBreak = () => {
-    endBreak.mutate();
   };
 
   // Live timer state for current session
   const [currentTime, setCurrentTime] = useState(new Date());
 
-  // Update current time every second for live timer
   useEffect(() => {
-    if (status?.hasActiveSession) {
-      const interval = setInterval(() => {
-        setCurrentTime(new Date());
-      }, 1000);
-
-      return () => clearInterval(interval);
-    }
+    if (!status?.hasActiveSession) return;
+    const interval = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(interval);
   }, [status?.hasActiveSession]);
 
   // Calculate current session duration in seconds (live timer)
-  const currentSessionDurationSeconds = status?.session
-    ? (() => {
-        const now = currentTime;
-        const start = new Date(status.session.startTime);
-        // Calculate total break duration in seconds
-        const totalBreakDurationSeconds = status.session.breakSessions.reduce((sum, breakSession) => {
-          if (breakSession.duration !== null) {
-            // Convert minutes to seconds
-            return sum + (breakSession.duration * 60);
-          } else if (breakSession.endTime === null) {
-            // Active break - calculate current duration in seconds
-            return sum + calculateDurationInSeconds(new Date(breakSession.startTime), now);
+  const currentSessionDurationSeconds = useMemo(() => {
+    if (!status?.session) return 0;
+    const start = new Date(status.session.startTime);
+    const totalBreakSeconds = status.session.breakSessions.reduce((sum, b) => {
+      if (b.duration !== null) return sum + b.duration * 60;
+      if (b.endTime === null) return sum + calculateDurationInSeconds(new Date(b.startTime), currentTime);
+      return sum;
+    }, 0);
+    return calculateDurationInSeconds(start, currentTime) - totalBreakSeconds;
+  }, [status?.session, currentTime]);
+
+  const activeBreakDurationSeconds = useMemo(() => {
+    if (!status?.activeBreak) return 0;
+    return calculateDurationInSeconds(new Date(status.activeBreak.startTime), currentTime);
+  }, [status?.activeBreak, currentTime]);
+
+  // Group sessions by date
+  const sessionsByDate = useMemo(() => {
+    return sessions?.reduce((acc, session) => {
+      const date = new Date(session.startTime).toDateString();
+      if (!acc[date]) acc[date] = [];
+      acc[date].push(session);
+      return acc;
+    }, {} as Record<string, typeof sessions>) ?? {};
+  }, [sessions]);
+
+  // Daily totals sorted descending
+  const dailyTotals = useMemo(() => {
+    return Object.entries(sessionsByDate)
+      .map(([date, daySessions]) => {
+        const totalMinutes = daySessions.reduce((sum, session) => {
+          if (session.duration !== null) return sum + session.duration;
+          if (session.status === "ACTIVE" || session.status === "PAUSED") {
+            const now = new Date();
+            const start = new Date(session.startTime);
+            const breakMins = session.breakSessions.reduce((bs, b) => {
+              if (b.duration !== null) return bs + b.duration;
+              if (b.endTime === null) return bs + calculateDuration(new Date(b.startTime), now);
+              return bs;
+            }, 0);
+            return sum + calculateDuration(start, now) - breakMins;
           }
           return sum;
         }, 0);
-        const totalDurationSeconds = calculateDurationInSeconds(start, now);
-        return totalDurationSeconds - totalBreakDurationSeconds;
-      })()
-    : 0;
+        return {
+          date: new Date(date),
+          totalMinutes,
+          sessionCount: daySessions.length,
+          hasIncomplete: daySessions.some((s) => s.status === "ACTIVE" || s.status === "PAUSED"),
+        };
+      })
+      .sort((a, b) => b.date.getTime() - a.date.getTime());
+  }, [sessionsByDate]);
 
-  // Calculate break duration in seconds if active
-  const activeBreakDurationSeconds = status?.activeBreak
-    ? calculateDurationInSeconds(new Date(status.activeBreak.startTime), currentTime)
-    : 0;
-
-  // Group sessions by date
-  const sessionsByDate = sessions?.reduce((acc, session) => {
-    const date = new Date(session.startTime).toDateString();
-    if (!acc[date]) {
-      acc[date] = [];
-    }
-    acc[date].push(session);
-    return acc;
-  }, {} as Record<string, typeof sessions>) || {};
-
-  // Calculate daily totals
-  const dailyTotals = Object.entries(sessionsByDate).map(([date, daySessions]) => {
-    const totalMinutes = daySessions.reduce((sum, session) => {
-      if (session.duration !== null) {
-        return sum + session.duration;
-      }
-      // If session is active, calculate current duration
-      if (session.status === "ACTIVE" || session.status === "PAUSED") {
-        const now = new Date();
-        const start = new Date(session.startTime);
-        const totalBreakDuration = session.breakSessions.reduce((breakSum, breakSession) => {
-          if (breakSession.duration !== null) {
-            return breakSum + breakSession.duration;
-          } else if (breakSession.endTime === null) {
-            return breakSum + calculateDuration(new Date(breakSession.startTime), now);
-          }
-          return breakSum;
-        }, 0);
-        const totalDuration = calculateDuration(start, now);
-        return sum + (totalDuration - totalBreakDuration);
-      }
-      return sum;
-    }, 0);
-
-    return {
-      date: new Date(date),
-      totalMinutes,
-      sessionCount: daySessions.length,
-      hasIncomplete: daySessions.some((s) => s.status === "ACTIVE" || s.status === "PAUSED"),
-    };
-  });
-
-  // Sort by date descending
-  dailyTotals.sort((a, b) => b.date.getTime() - a.date.getTime());
-
-  // State for expanded days
   const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set());
-  
   const toggleDay = (date: string) => {
-    const newExpanded = new Set(expandedDays);
-    if (newExpanded.has(date)) {
-      newExpanded.delete(date);
-    } else {
-      newExpanded.add(date);
-    }
-    setExpandedDays(newExpanded);
+    setExpandedDays((prev) => {
+      const next = new Set(prev);
+      next.has(date) ? next.delete(date) : next.add(date);
+      return next;
+    });
   };
 
   return (
@@ -189,10 +137,39 @@ export default function TimePage() {
         <p className="text-muted-foreground">Track your work hours and breaks</p>
       </div>
 
+      {/* Clock-out confirmation dialog */}
+      <Dialog open={showClockOutDialog} onOpenChange={setShowClockOutDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-orange-500" />
+              You're currently on a break
+            </DialogTitle>
+            <DialogDescription>
+              Clocking out will automatically end your active break and complete your session.
+              Are you sure you want to clock out?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowClockOutDialog(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={confirmClockOut} disabled={clockOut.isPending}>
+              {clockOut.isPending ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Square className="h-4 w-4 mr-2" />
+              )}
+              Clock Out
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Today Status Card */}
       <Card>
         <CardHeader>
-          <CardTitle>Today Status</CardTitle>
+          <CardTitle>Today's Status</CardTitle>
           <CardDescription>Your current time tracking status</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -203,66 +180,59 @@ export default function TimePage() {
             </div>
           ) : (
             <>
-              <div className="flex items-center justify-between">
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Clock className="h-5 w-5 text-muted-foreground" />
-                    <span className="text-sm font-medium">
-                      {status?.hasActiveSession ? "Clocked In" : "Clocked Out"}
-                    </span>
-                    {status?.hasActiveSession && (
-                      <Badge variant={status.activeBreak ? "secondary" : "default"}>
-                        {status.activeBreak ? "On Break" : "Working"}
-                      </Badge>
-                    )}
-                  </div>
-                  
-                  {/* Work Time - Always show when clocked in */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <Clock className="h-5 w-5 text-muted-foreground" />
+                  <span className="text-sm font-medium">
+                    {status?.hasActiveSession ? "Clocked In" : "Clocked Out"}
+                  </span>
                   {status?.hasActiveSession && (
-                    <div className="space-y-1">
-                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                        Work Time
-                      </p>
-                      <p className="text-3xl font-bold text-primary font-mono">
-                        {formatDurationWithSeconds(currentSessionDurationSeconds)}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {status.activeBreak ? "Paused (on break)" : "Active"}
-                      </p>
-                    </div>
+                    <Badge variant={status.activeBreak ? "secondary" : "default"}>
+                      {status.activeBreak ? "On Break" : "Working"}
+                    </Badge>
                   )}
-                  
-                  {/* Break Time - Show when on break */}
-                  {status?.activeBreak && (
-                    <div className="space-y-1 pt-3 border-t border-dashed">
-                      <p className="text-xs font-medium text-orange-600 uppercase tracking-wide">
-                        Break Time
-                      </p>
-                      <p className="text-2xl font-bold text-orange-500 font-mono">
-                        {formatDurationWithSeconds(activeBreakDurationSeconds)}
-                      </p>
-                      <p className="text-sm text-muted-foreground">Currently on break</p>
-                    </div>
-                  )}
-                  
-                  {/* Total Worked Today - Clearly labeled as work time only */}
-                  <div className="space-y-1 pt-3 border-t">
+                </div>
+
+                {status?.hasActiveSession && (
+                  <div className="space-y-1">
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                      Total Work Time Today
+                      Work Time
                     </p>
-                    <p className="text-2xl font-bold">
-                      {formatDuration(status?.totalWorkedToday || 0)}
+                    <p className="text-3xl font-bold text-primary font-mono">
+                      {formatDurationWithSeconds(currentSessionDurationSeconds)}
                     </p>
                     <p className="text-sm text-muted-foreground">
-                      Work time only (breaks excluded)
+                      {status.activeBreak ? "Paused (on break)" : "Active"}
                     </p>
                   </div>
+                )}
+
+                {status?.activeBreak && (
+                  <div className="space-y-1 pt-3 border-t border-dashed">
+                    <p className="text-xs font-medium text-orange-600 uppercase tracking-wide">
+                      Break Time
+                    </p>
+                    <p className="text-2xl font-bold text-orange-500 font-mono">
+                      {formatDurationWithSeconds(activeBreakDurationSeconds)}
+                    </p>
+                    <p className="text-sm text-muted-foreground">Currently on break</p>
+                  </div>
+                )}
+
+                <div className="space-y-1 pt-3 border-t">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    Total Work Time Today
+                  </p>
+                  <p className="text-2xl font-bold">
+                    {formatDuration(status?.totalWorkedToday || 0)}
+                  </p>
+                  <p className="text-sm text-muted-foreground">Work time only (breaks excluded)</p>
                 </div>
               </div>
 
               <div className="flex flex-wrap gap-2 pt-4">
                 <Button
-                  onClick={handleClockIn}
+                  onClick={() => clockIn.mutate()}
                   disabled={status?.hasActiveSession || clockIn.isPending}
                   variant="default"
                 >
@@ -275,12 +245,8 @@ export default function TimePage() {
                 </Button>
 
                 <Button
-                  onClick={handleStartBreak}
-                  disabled={
-                    !status?.hasActiveSession ||
-                    !!status?.activeBreak ||
-                    startBreak.isPending
-                  }
+                  onClick={() => startBreak.mutate()}
+                  disabled={!status?.hasActiveSession || !!status?.activeBreak || startBreak.isPending}
                   variant="outline"
                 >
                   {startBreak.isPending ? (
@@ -292,7 +258,7 @@ export default function TimePage() {
                 </Button>
 
                 <Button
-                  onClick={handleEndBreak}
+                  onClick={() => endBreak.mutate()}
                   disabled={!status?.activeBreak || endBreak.isPending}
                   variant="outline"
                 >
@@ -305,7 +271,7 @@ export default function TimePage() {
                 </Button>
 
                 <Button
-                  onClick={handleClockOut}
+                  onClick={handleClockOutClick}
                   disabled={!status?.hasActiveSession || clockOut.isPending}
                   variant="destructive"
                 >
@@ -337,7 +303,9 @@ export default function TimePage() {
             </div>
           ) : dailyTotals.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
-              <p>No time entries for this week</p>
+              <Clock className="h-12 w-12 mx-auto mb-4 opacity-30" />
+              <p>No time entries this week</p>
+              <p className="text-sm mt-1">Clock in to start tracking</p>
             </div>
           ) : (
             <>
@@ -357,10 +325,10 @@ export default function TimePage() {
                       const dayKey = day.date.toISOString();
                       const daySessions = sessionsByDate[day.date.toDateString()] || [];
                       const isExpanded = expandedDays.has(dayKey);
-                      
+
                       return (
                         <React.Fragment key={dayKey}>
-                          <TableRow 
+                          <TableRow
                             className="cursor-pointer hover:bg-muted/50"
                             onClick={() => toggleDay(dayKey)}
                           >
@@ -418,11 +386,11 @@ export default function TimePage() {
                   const dayKey = day.date.toISOString();
                   const daySessions = sessionsByDate[day.date.toDateString()] || [];
                   const isExpanded = expandedDays.has(dayKey);
-                  
+
                   return (
                     <Card key={dayKey}>
                       <CardContent className="pt-6">
-                        <div 
+                        <div
                           className="flex items-center justify-between mb-2 cursor-pointer"
                           onClick={() => toggleDay(dayKey)}
                         >
