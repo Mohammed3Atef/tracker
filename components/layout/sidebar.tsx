@@ -269,7 +269,7 @@ export function Sidebar() {
   const userRole = session?.user?.role as UserRole | undefined;
   const isAdminOrManager = userRole === "admin" || userRole === "manager";
 
-  const userName = session?.user?.name || session?.user?.email || "User";
+  const userName = session?.user?.email || "User";
   const userInitial = userName.charAt(0).toUpperCase();
 
   return (

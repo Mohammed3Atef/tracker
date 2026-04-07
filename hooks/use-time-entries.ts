@@ -17,6 +17,7 @@ export interface TimeEntry {
     startTime: string;
     endTime: string | null;
     duration: number | null;
+    type: string;
   }>;
   user?: {
     id: string;

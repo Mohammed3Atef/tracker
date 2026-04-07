@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { CalendarView, TimeEntry } from "@/components/time/calendar-view";
+import { CalendarView } from "@/components/time/calendar-view";
+import { TimeEntry } from "@/hooks/use-time-entries";
 import { useMyTime } from "@/hooks/use-my-time";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
@@ -13,10 +14,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { TimeEntryForm } from "@/components/time/time-entry-form";
-import { useRouter } from "next/navigation";
 
 export default function TimeCalendarPage() {
-  const router = useRouter();
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedEntry, setSelectedEntry] = useState<TimeEntry | null>(null);
   const [addEntryDialogOpen, setAddEntryDialogOpen] = useState(false);

@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { CalendarView, TimeEntry } from "@/components/time/calendar-view";
+import { CalendarView } from "@/components/time/calendar-view";
+import { TimeEntry } from "@/hooks/use-time-entries";
 import { useTimeEntries } from "@/hooks/use-time-entries";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";

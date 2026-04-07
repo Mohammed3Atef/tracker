@@ -57,5 +57,9 @@ export function useApiToast() {
     });
   };
 
-  return { toastApiError };
+  const toastSuccess = (message: string) => {
+    toast({ title: message });
+  };
+
+  return { toastApiError, toastSuccess };
 }
